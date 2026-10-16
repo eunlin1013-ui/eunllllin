@@ -9,6 +9,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Jua&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+    <!-- Leaflet OpenStreetMap (무료 지도 라이브러리) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <style>
         :root {
             --sky: #eaf5ff;
@@ -450,17 +454,22 @@
             border-radius: 20px;
             background: #e8f5ff;
             box-shadow: 0 5px 20px rgba(125, 155, 185, .1);
+            z-index: 1;
         }
 
-        .map-loading {
-            display: flex;
+        /* 지도 마커 번호 아이콘 스타일 */
+        .custom-number-marker {
+            background: linear-gradient(135deg, #e985a5, #f5a8bd);
+            color: white;
+            font-family: 'Jua', sans-serif;
+            font-weight: bold;
+            font-size: 14px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+            display: flex !important;
             align-items: center;
             justify-content: center;
-            height: 100%;
-            padding: 1.5rem;
-            text-align: center;
-            color: #93627c;
-            line-height: 1.8;
         }
 
         .card:has(#map-container) {
@@ -471,29 +480,6 @@
             .card:has(#map-container) {
                 position: sticky;
                 top: 1rem;
-            }
-        }
-
-        @media (max-width: 380px) {
-            .card {
-                padding: 1rem;
-            }
-
-            .place-details {
-                gap: .5rem;
-            }
-
-            .place-title-text {
-                font-size: 1rem;
-            }
-
-            .btn-order {
-                width: 28px;
-                height: 28px;
-            }
-
-            .toggle-btn {
-                font-size: .75rem;
             }
         }
     </style>
@@ -540,34 +526,32 @@
             </div>
         </div>
 
-        <!-- 오른쪽: Google 지도 -->
+        <!-- 오른쪽: 지도 -->
         <div>
             <div class="card">
                 <div class="card-title">🗺️ 동선 연결 지도</div>
-                <div id="map-container">
-                    <div class="map-loading">🗺️ Google 지도를 불러오는 중입니다.</div>
-                </div>
+                <div id="map-container"></div>
             </div>
         </div>
     </div>
 
-    <!-- 장소 추가 카드는 일정과 지도 아래 -->
+    <!-- 장소 추가 카드 -->
     <div style="max-width:1180px; margin:0 auto; padding:0 1.2rem;">
         <div class="card">
             <div class="card-title">✨ Day <span id="current-day-num">1</span> 장소 간편 추가</div>
 
             <div class="input-mode-toggle">
-                <button class="toggle-btn active" id="btn-search-mode" onclick="setMode('search')">🔍 구글 지도 장소 검색</button>
+                <button class="toggle-btn active" id="btn-search-mode" onclick="setMode('search')">🔍 장소 이름/명칭 검색</button>
                 <button class="toggle-btn" id="btn-gps-mode" onclick="setMode('gps')">📍 직접 GPS 위치 입력</button>
             </div>
 
             <div id="search-input-box" class="form-group">
-                <label>구글 지도 장소 검색</label>
-                <input type="text" id="google-autocomplete" placeholder="예: Nagoya Castle, Oasis 21, Atsuta Jingu" autocomplete="off">
+                <label>장소 키워드 검색</label>
+                <input type="text" id="place-search-kw" placeholder="예: 지브리 파크, 나고야성, 오아시스 21, Nagoya Station" onkeypress="if(event.key==='Enter') addNewPlace()">
             </div>
 
             <div id="gps-input-box" class="form-group" style="display:none;">
-                <label>장소 이름</label>
+                <label>장소 이름 및 좌표</label>
                 <input type="text" id="custom-name" placeholder="예: 나만의 비밀 카페" style="margin-bottom:0.5rem;">
                 <div style="display:flex; gap:0.5rem;">
                     <input type="number" step="any" id="custom-lat" placeholder="위도 (Lat): 35.1848">
@@ -575,7 +559,7 @@
                 </div>
             </div>
 
-            <button class="btn-add" onclick="addNewPlace()">➕ 장소 추가하기</button>
+            <button class="btn-add" id="btn-add-submit" onclick="addNewPlace()">➕ 장소 추가하기</button>
         </div>
     </div>
 
@@ -588,40 +572,13 @@
         let map = null;
         let polyline = null;
         let markers = [];
-        let selectedPlaceTemp = null;
-        let autocomplete = null;
-        let infoWindow = null;
-        let mapReady = false;
 
         const initialDefaultData = {
             1: [
-                {
-                    id: 101,
-                    name: "나고야성",
-                    lat: 35.1848,
-                    lng: 136.8997,
-                    day: 1,
-                    cost: 500,
-                    category: "기타",
-                    hours: "09:00 - 16:30",
-                    memo: "천수각 전경 확인 및 산책"
-                },
-                {
-                    id: 102,
-                    name: "오아시스 21",
-                    lat: 35.1709,
-                    lng: 136.9082,
-                    day: 1,
-                    cost: 0,
-                    category: "기타",
-                    hours: "10:00 - 21:00",
-                    memo: "야경 촬영 명소"
-                }
+                { id: 101, name: "나고야성", lat: 35.1848, lng: 136.8997, day: 1, cost: 500, category: "기타", hours: "09:00 - 16:30", memo: "천수각 전경 확인 및 산책" },
+                { id: 102, name: "오아시스 21", lat: 35.1709, lng: 136.9082, day: 1, cost: 0, category: "기타", hours: "10:00 - 21:00", memo: "야경 촬영 명소" }
             ],
-            2: [],
-            3: [],
-            4: [],
-            5: []
+            2: [], 3: [], 4: [], 5: []
         };
 
         let tripData = loadSavedTripData();
@@ -631,12 +588,10 @@
                 const saved = localStorage.getItem(STORAGE_KEY);
                 if (saved) {
                     const parsed = JSON.parse(saved);
-                    if (parsed && typeof parsed === 'object') {
-                        return parsed;
-                    }
+                    if (parsed && typeof parsed === 'object') return parsed;
                 }
             } catch (e) {
-                console.error("저장된 데이터 로드 실패:", e);
+                console.error("저장 데이터 로드 실패:", e);
             }
             return JSON.parse(JSON.stringify(initialDefaultData));
         }
@@ -660,127 +615,53 @@
 
         function escapeHTML(value) {
             return String(value ?? "").replace(/[&<>"']/g, function (char) {
-                return {
-                    "&": "&amp;",
-                    "<": "&lt;",
-                    ">": "&gt;",
-                    '"': "&quot;",
-                    "'": "&#039;"
-                }[char];
+                return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char];
             });
         }
 
         async function loadExchangeRate() {
             const status = document.getElementById("exchange-rate-status");
-
             try {
                 const response = await fetch("https://open.er-api.com/v6/latest/JPY");
-
-                if (!response.ok) {
-                    throw new Error("환율 정보를 불러오지 못했습니다.");
-                }
-
+                if (!response.ok) throw new Error("환율 로드 실패");
                 const data = await response.json();
                 const rate = Number(data?.rates?.KRW);
-
-                if (!Number.isFinite(rate) || rate <= 0) {
-                    throw new Error("환율 데이터가 올바르지 않습니다.");
-                }
+                if (!Number.isFinite(rate) || rate <= 0) throw new Error("환율 오류");
 
                 JPY_TO_KRW_RATE = rate;
-                status.textContent =
-                    "실시간 환율 · 100엔 ≈ " +
-                    Math.round(rate * 100).toLocaleString("ko-KR") + "원";
+                status.textContent = "실시간 환율 · 100엔 ≈ " + Math.round(rate * 100).toLocaleString("ko-KR") + "원";
             } catch (error) {
                 JPY_TO_KRW_RATE = DEFAULT_JPY_TO_KRW_RATE;
                 status.textContent = "환율 연결 실패 · 기본 환율 100엔 = 900원";
             }
-
             renderSchedule();
             updateTotalSpending();
         }
 
         function updateTotalSpending() {
             let total = 0;
-
             Object.values(tripData).forEach(function (places) {
                 places.forEach(function (place) {
                     total += Math.max(0, Number(place.cost) || 0);
                 });
             });
-
-            document.getElementById("total-price").innerText =
-                "¥" + total.toLocaleString("ja-JP");
-
-            document.getElementById("total-krw").innerText =
-                "(약 " + Math.round(total * JPY_TO_KRW_RATE).toLocaleString("ko-KR") + "원)";
+            document.getElementById("total-price").innerText = "¥" + total.toLocaleString("ja-JP");
+            document.getElementById("total-krw").innerText = "(약 " + Math.round(total * JPY_TO_KRW_RATE).toLocaleString("ko-KR") + "원)";
         }
 
         function initMap() {
-            const nagoyaCenter = { lat: 35.1848, lng: 136.8997 };
+            map = L.map('map-container').setView([35.1848, 136.8997], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
 
-            map = new google.maps.Map(document.getElementById("map-container"), {
-                zoom: 13,
-                center: nagoyaCenter,
-                mapTypeControl: false,
-                streetViewControl: false,
-                fullscreenControl: true
-            });
-
-            infoWindow = new google.maps.InfoWindow();
-
-            polyline = new google.maps.Polyline({
-                strokeColor: "#e985a5",
-                strokeOpacity: 0.85,
-                strokeWeight: 4,
-                map: map
-            });
-
-            const input = document.getElementById("google-autocomplete");
-
-            autocomplete = new google.maps.places.Autocomplete(input, {
-                fields: ["place_id", "name", "geometry", "formatted_address"],
-                componentRestrictions: { country: "jp" }
-            });
-
-            autocomplete.bindTo("bounds", map);
-
-            autocomplete.addListener("place_changed", function () {
-                const place = autocomplete.getPlace();
-
-                if (!place.geometry || !place.geometry.location) {
-                    selectedPlaceTemp = null;
-                    alert("Google 지도 검색 결과에서 장소를 선택해주세요.");
-                    return;
-                }
-
-                selectedPlaceTemp = {
-                    placeId: place.place_id || "",
-                    name: place.name || input.value.trim(),
-                    lat: place.geometry.location.lat(),
-                    lng: place.geometry.location.lng()
-                };
-
-                map.panTo({
-                    lat: selectedPlaceTemp.lat,
-                    lng: selectedPlaceTemp.lng
-                });
-                map.setZoom(15);
-            });
-
-            input.addEventListener("input", function () {
-                selectedPlaceTemp = null;
-            });
-
-            mapReady = true;
+            polyline = L.polyline([], { color: '#e985a5', weight: 4, opacity: 0.85 }).addTo(map);
             renderSchedule();
         }
 
-        window.initMap = initMap;
-
         function setMode(mode) {
             inputMode = mode;
-
             document.getElementById('btn-search-mode').classList.toggle('active', mode === 'search');
             document.getElementById('btn-gps-mode').classList.toggle('active', mode === 'gps');
             document.getElementById('search-input-box').style.display = mode === 'search' ? 'block' : 'none';
@@ -789,28 +670,52 @@
 
         function selectDay(day) {
             currentDay = day;
-
             document.querySelectorAll('.day-tab').forEach(function (tab, idx) {
                 tab.classList.toggle('active', idx + 1 === day);
             });
-
             document.getElementById('current-day-num').innerText = day;
             document.getElementById('current-day-title').innerText = day;
-
             renderSchedule();
         }
 
-        function addNewPlace() {
+        async function addNewPlace() {
             let name, lat, lng;
+            const btnAdd = document.getElementById('btn-add-submit');
 
             if (inputMode === 'search') {
-                if (!selectedPlaceTemp) {
-                    return alert("Google 지도 검색 결과에서 장소를 선택해주세요!");
-                }
+                const kw = document.getElementById('place-search-kw').value.trim();
+                if (!kw) return alert("검색할 장소 이름을 입력해주세요!");
 
-                name = selectedPlaceTemp.name;
-                lat = selectedPlaceTemp.lat;
-                lng = selectedPlaceTemp.lng;
+                btnAdd.innerText = "🔍 위치 검색 중...";
+                btnAdd.disabled = true;
+
+                try {
+                    const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(kw + " Japan")}&limit=1`;
+                    const res = await fetch(searchUrl);
+                    const results = await res.json();
+
+                    if (!results || results.length === 0) {
+                        const resGlobal = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(kw)}&limit=1`);
+                        const resultsGlobal = await resGlobal.json();
+                        
+                        if (!resultsGlobal || resultsGlobal.length === 0) {
+                            alert("장소를 찾을 수 없습니다. 영문이나 한자 이름으로 검색해보세요.");
+                            return;
+                        }
+                        lat = parseFloat(resultsGlobal[0].lat);
+                        lng = parseFloat(resultsGlobal[0].lon);
+                    } else {
+                        lat = parseFloat(results[0].lat);
+                        lng = parseFloat(results[0].lon);
+                    }
+                    name = kw;
+                } catch (e) {
+                    alert("검색 중 오류가 발생했습니다.");
+                    return;
+                } finally {
+                    btnAdd.innerText = "➕ 장소 추가하기";
+                    btnAdd.disabled = false;
+                }
             } else {
                 name = document.getElementById('custom-name').value.trim();
                 lat = parseFloat(document.getElementById('custom-lat').value);
@@ -818,10 +723,6 @@
 
                 if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
                     return alert("장소명과 GPS 위도/경도를 올바르게 입력해주세요.");
-                }
-
-                if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-                    return alert("위도는 -90~90, 경도는 -180~180 사이로 입력해주세요.");
                 }
             }
 
@@ -837,18 +738,14 @@
                 memo: ""
             };
 
-            if (!tripData[currentDay]) {
-                tripData[currentDay] = [];
-            }
-
+            if (!tripData[currentDay]) tripData[currentDay] = [];
             tripData[currentDay].push(newPlace);
             saveTripData();
 
-            document.getElementById('google-autocomplete').value = '';
+            document.getElementById('place-search-kw').value = '';
             document.getElementById('custom-name').value = '';
             document.getElementById('custom-lat').value = '';
             document.getElementById('custom-lng').value = '';
-            selectedPlaceTemp = null;
 
             renderSchedule();
             updateTotalSpending();
@@ -857,7 +754,6 @@
         function movePlace(index, direction) {
             const list = tripData[currentDay];
             const targetIndex = index + direction;
-
             if (targetIndex < 0 || targetIndex >= list.length) return;
 
             const temp = list[index];
@@ -869,20 +765,13 @@
         }
 
         function updatePlaceDetails(id, field, value) {
-            const place = tripData[currentDay].find(function (p) {
-                return p.id === id;
-            });
-
+            const place = tripData[currentDay].find(p => p.id === id);
             if (!place) return;
 
             if (field === 'day') {
                 const targetDay = parseInt(value, 10);
-
                 if (targetDay !== currentDay) {
-                    tripData[currentDay] = tripData[currentDay].filter(function (p) {
-                        return p.id !== id;
-                    });
-
+                    tripData[currentDay] = tripData[currentDay].filter(p => p.id !== id);
                     place.day = targetDay;
                     if (!tripData[targetDay]) tripData[targetDay] = [];
                     tripData[targetDay].push(place);
@@ -904,49 +793,20 @@
         }
 
         function deletePlace(id) {
-            const place = tripData[currentDay].find(function (p) {
-                return p.id === id;
-            });
-
+            const place = tripData[currentDay].find(p => p.id === id);
             if (!place) return;
-
             if (!confirm('"' + place.name + '" 장소를 삭제할까요?')) return;
 
-            tripData[currentDay] = tripData[currentDay].filter(function (p) {
-                return p.id !== id;
-            });
-
+            tripData[currentDay] = tripData[currentDay].filter(p => p.id !== id);
             saveTripData();
             renderSchedule();
             updateTotalSpending();
         }
 
         function focusPlace(id) {
-            if (!mapReady || !map) return;
-
-            const place = tripData[currentDay].find(function (p) {
-                return p.id === id;
-            });
-
-            if (!place) return;
-
-            map.panTo({ lat: place.lat, lng: place.lng });
-            map.setZoom(16);
-
-            const marker = markers.find(function (m) {
-                return m.placeId === id;
-            });
-
-            if (marker) {
-                infoWindow.setContent(
-                    "<div style='padding:6px 8px'><strong>" +
-                    escapeHTML(place.name) +
-                    "</strong><br>" +
-                    escapeHTML(place.hours || "방문 시간 미정") +
-                    "</div>"
-                );
-                infoWindow.open({ map: map, anchor: marker });
-            }
+            const place = tripData[currentDay].find(p => p.id === id);
+            if (!place || !map) return;
+            map.setView([place.lat, place.lng], 16);
         }
 
         function renderSchedule() {
@@ -956,63 +816,43 @@
             const dayList = tripData[currentDay] || [];
             const pathCoordinates = [];
 
-            markers.forEach(function (marker) {
-                marker.setMap(null);
-            });
+            markers.forEach(m => map.removeLayer(m));
             markers = [];
 
             if (dayList.length === 0) {
-                container.innerHTML =
-                    '<div style="text-align:center; color:#a18d9a; padding:2rem;">등록된 장소가 없습니다. 아래에서 장소를 추가해보세요! ❄️</div>';
+                container.innerHTML = '<div style="text-align:center; color:#a18d9a; padding:2rem;">등록된 장소가 없습니다. 아래에서 장소를 추가해보세요! ❄️</div>';
             }
 
-            dayList.forEach(function (place, index) {
+            dayList.forEach((place, index) => {
                 const krwEquivalent = Math.round((Number(place.cost) || 0) * JPY_TO_KRW_RATE);
-                const pos = { lat: Number(place.lat), lng: Number(place.lng) };
-
+                const pos = [Number(place.lat), Number(place.lng)];
                 pathCoordinates.push(pos);
 
-                if (mapReady && map && typeof google !== 'undefined' && google.maps) {
-                    const marker = new google.maps.Marker({
-                        position: pos,
-                        map: map,
-                        label: {
-                            text: String(index + 1),
-                            color: "#ffffff"
-                        },
-                        title: place.name
+                if (map) {
+                    // 지도 위에 1, 2, 3... 숫자가 크게 박힌 커스텀 마커 생성
+                    const numberIcon = L.divIcon({
+                        className: 'custom-number-marker',
+                        html: `${index + 1}`,
+                        iconSize: [28, 28],
+                        iconAnchor: [14, 14]
                     });
 
-                    marker.placeId = place.id;
-
-                    marker.addListener("click", function () {
-                        infoWindow.setContent(`
-                            <div style="padding:6px 8px;max-width:220px">
-                                <strong>${escapeHTML(place.name)}</strong>
-                                <p style="margin-top:5px;font-size:12px">${escapeHTML(place.hours || "방문 시간 미정")}</p>
-                                <p style="margin-top:4px;font-size:12px">¥${(Number(place.cost) || 0).toLocaleString("ja-JP")}</p>
-                            </div>
-                        `);
-
-                        infoWindow.open({ map: map, anchor: marker });
-                    });
-
+                    const marker = L.marker(pos, { icon: numberIcon }).addTo(map)
+                        .bindPopup(`<b>${index + 1}. ${escapeHTML(place.name)}</b><br>${escapeHTML(place.hours || "시간 미정")}`);
                     markers.push(marker);
                 }
 
                 const card = document.createElement('div');
                 card.className = 'place-card';
-
                 card.innerHTML = `
                     <div class="place-header">
                         <span class="place-title-text" onclick="focusPlace(${place.id})">${index + 1}. ${escapeHTML(place.name)} 📍</span>
                         <div class="order-btns">
-                            <button class="btn-order" onclick="movePlace(${index}, -1)" aria-label="위로 이동">▲</button>
-                            <button class="btn-order" onclick="movePlace(${index}, 1)" aria-label="아래로 이동">▼</button>
+                            <button class="btn-order" onclick="movePlace(${index}, -1)" aria-label="위로">▲</button>
+                            <button class="btn-order" onclick="movePlace(${index}, 1)" aria-label="아래로">▼</button>
                             <button class="btn-order" style="background:#fff0f5;color:#e985a5;border-color:#f4dce6;" onclick="deletePlace(${place.id})" aria-label="삭제">✕</button>
                         </div>
                     </div>
-
                     <div class="place-details">
                         <div class="form-group">
                             <label>📅 날짜 이동</label>
@@ -1024,18 +864,15 @@
                                 <option value="5" ${currentDay === 5 ? 'selected' : ''}>Day 5 (12/18)</option>
                             </select>
                         </div>
-
                         <div class="form-group">
                             <label>💴 지출 엔화(¥)</label>
                             <input type="number" min="0" step="1" value="${Number(place.cost) || 0}" onchange="updatePlaceDetails(${place.id}, 'cost', this.value)">
                             <span>자동 환산: 약 ${krwEquivalent.toLocaleString("ko-KR")}원</span>
                         </div>
-
                         <div class="form-group">
                             <label>⏰ 이용시간</label>
                             <input type="text" value="${escapeHTML(place.hours || '')}" placeholder="예: 10:00 - 12:00" onchange="updatePlaceDetails(${place.id}, 'hours', this.value)">
                         </div>
-
                         <div class="form-group">
                             <label>🏷️ 카테고리</label>
                             <select onchange="updatePlaceDetails(${place.id}, 'category', this.value)">
@@ -1046,53 +883,34 @@
                                 <option value="기타" ${place.category === '기타' ? 'selected' : ''}>✨ 기타/관광</option>
                             </select>
                         </div>
-
                         <div class="form-group" style="grid-column:span 2;">
                             <label>📝 메모</label>
                             <input type="text" value="${escapeHTML(place.memo || '')}" placeholder="특이사항 입력" onchange="updatePlaceDetails(${place.id}, 'memo', this.value)">
                         </div>
                     </div>
                 `;
-
                 container.appendChild(card);
             });
 
-            if (mapReady && map && polyline) {
-                polyline.setPath(pathCoordinates);
-
-                if (pathCoordinates.length === 1) {
-                    map.setCenter(pathCoordinates[0]);
-                    map.setZoom(15);
-                } else if (pathCoordinates.length > 1) {
-                    const bounds = new google.maps.LatLngBounds();
-
-                    pathCoordinates.forEach(function (coord) {
-                        bounds.extend(coord);
-                    });
-
-                    map.fitBounds(bounds);
+            if (map && polyline) {
+                polyline.setLatLngs(pathCoordinates);
+                if (pathCoordinates.length > 0) {
+                    map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
                 } else {
-                    map.setCenter({ lat: 35.1848, lng: 136.8997 });
-                    map.setZoom(13);
+                    map.setView([35.1848, 136.8997], 13);
                 }
             }
-
             updateTotalSpending();
         }
 
-        renderSchedule();
-        updateTotalSpending();
-        loadExchangeRate();
-    </script>
-
-    <!-- Google Maps API -->
-    <script
-        async
-        defer
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB_tV0g1JRXLqGmi1dKyDl2G1THeDMrgR0&libraries=places&callback=initMap&language=ko&region=JP">
+        window.onload = function() {
+            initMap();
+            loadExchangeRate();
+        };
     </script>
 </body>
 </html>
+
 
 
 
