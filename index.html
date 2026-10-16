@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Jua&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <!-- Leaflet OpenStreetMap (무료 지도 라이브러리) -->
+    <!-- Leaflet OpenStreetMap (지도 라이브러리) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -541,22 +541,19 @@
             <div class="card-title">✨ Day <span id="current-day-num">1</span> 장소 간편 추가</div>
 
             <div class="input-mode-toggle">
-                <button class="toggle-btn active" id="btn-search-mode" onclick="setMode('search')">🔍 장소 이름/명칭 검색</button>
-                <button class="toggle-btn" id="btn-gps-mode" onclick="setMode('gps')">📍 직접 GPS 위치 입력</button>
+                <button class="toggle-btn active" id="btn-search-mode" onclick="setMode('search')">🔍 장소 이름 검색</button>
+                <button class="toggle-btn" id="btn-address-mode" onclick="setMode('address')">🏠 도로명/상세 주소 직접 입력</button>
             </div>
 
             <div id="search-input-box" class="form-group">
-                <label>장소 키워드 검색</label>
-                <input type="text" id="place-search-kw" placeholder="예: 지브리 파크, 나고야성, 오아시스 21, Nagoya Station" onkeypress="if(event.key==='Enter') addNewPlace()">
+                <label>장소 명칭 검색</label>
+                <input type="text" id="place-search-kw" placeholder="예: 지브리 파크, 나고야성, 오아시스 21" onkeypress="if(event.key==='Enter') addNewPlace()">
             </div>
 
-            <div id="gps-input-box" class="form-group" style="display:none;">
-                <label>장소 이름 및 좌표</label>
-                <input type="text" id="custom-name" placeholder="예: 나만의 비밀 카페" style="margin-bottom:0.5rem;">
-                <div style="display:flex; gap:0.5rem;">
-                    <input type="number" step="any" id="custom-lat" placeholder="위도 (Lat): 35.1848">
-                    <input type="number" step="any" id="custom-lng" placeholder="경도 (Lng): 136.8997">
-                </div>
+            <div id="address-input-box" class="form-group" style="display:none;">
+                <label>장소 이름 및 구글 도로명 주소</label>
+                <input type="text" id="custom-address-name" placeholder="표시될 장소 이름 (예: 나고야 호텔)" style="margin-bottom:0.5rem;">
+                <input type="text" id="custom-full-address" placeholder="구글 지도의 도로명 주소 복사/붙여넣기" onkeypress="if(event.key==='Enter') addNewPlace()">
             </div>
 
             <button class="btn-add" id="btn-add-submit" onclick="addNewPlace()">➕ 장소 추가하기</button>
@@ -652,7 +649,7 @@
         function initMap() {
             map = L.map('map-container').setView([35.1848, 136.8997], 13);
             
-            // Google Maps 무료 한국어 레이어 적용
+            // Google Maps 한국어 레이어
             L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=ko&x={x}&y={y}&z={z}', {
                 maxZoom: 19,
                 attribution: '© Google Maps'
@@ -665,9 +662,9 @@
         function setMode(mode) {
             inputMode = mode;
             document.getElementById('btn-search-mode').classList.toggle('active', mode === 'search');
-            document.getElementById('btn-gps-mode').classList.toggle('active', mode === 'gps');
+            document.getElementById('btn-address-mode').classList.toggle('active', mode === 'address');
             document.getElementById('search-input-box').style.display = mode === 'search' ? 'block' : 'none';
-            document.getElementById('gps-input-box').style.display = mode === 'gps' ? 'block' : 'none';
+            document.getElementById('address-input-box').style.display = mode === 'address' ? 'block' : 'none';
         }
 
         function selectDay(day) {
@@ -680,59 +677,69 @@
             renderSchedule();
         }
 
+        // 주소/이름으로 위치(위도, 경도)를 찾아주는 통합 검색 함수
+        async function fetchCoordinates(query) {
+            // 1차: Nominatim
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+                const results = await res.json();
+                if (results && results.length > 0) {
+                    return { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
+                }
+            } catch(e) {}
+
+            // 2차: 구글 지도 지오코딩 정식 API
+            try {
+                const resG = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=AIzaSyB_tV0g1JRXLqGmi1dKyDl2G1THeDMrgR0`);
+                const dataG = await resG.json();
+                if (dataG && dataG.status === "OK" && dataG.results.length > 0) {
+                    const loc = dataG.results[0].geometry.location;
+                    return { lat: loc.lat, lng: loc.lng };
+                }
+            } catch(e) {}
+
+            return null;
+        }
+
         async function addNewPlace() {
-            let name, lat, lng;
+            let name, queryAddress;
             const btnAdd = document.getElementById('btn-add-submit');
 
             if (inputMode === 'search') {
-                const kw = document.getElementById('place-search-kw').value.trim();
-                if (!kw) return alert("검색할 장소 이름을 입력해주세요!");
-
-                btnAdd.innerText = "🔍 위치 검색 중...";
-                btnAdd.disabled = true;
-
-                try {
-                    const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(kw + " Japan")}&limit=1`;
-                    const res = await fetch(searchUrl);
-                    const results = await res.json();
-
-                    if (!results || results.length === 0) {
-                        const resGlobal = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(kw)}&limit=1`);
-                        const resultsGlobal = await resGlobal.json();
-                        
-                        if (!resultsGlobal || resultsGlobal.length === 0) {
-                            alert("장소를 찾을 수 없습니다. 영문이나 한자 이름으로 검색해보세요.");
-                            return;
-                        }
-                        lat = parseFloat(resultsGlobal[0].lat);
-                        lng = parseFloat(resultsGlobal[0].lon);
-                    } else {
-                        lat = parseFloat(results[0].lat);
-                        lng = parseFloat(results[0].lon);
-                    }
-                    name = kw;
-                } catch (e) {
-                    alert("검색 중 오류가 발생했습니다.");
-                    return;
-                } finally {
-                    btnAdd.innerText = "➕ 장소 추가하기";
-                    btnAdd.disabled = false;
-                }
+                name = document.getElementById('place-search-kw').value.trim();
+                if (!name) return alert("검색할 장소 이름을 입력해주세요!");
+                queryAddress = name + " Nagoya Japan";
             } else {
-                name = document.getElementById('custom-name').value.trim();
-                lat = parseFloat(document.getElementById('custom-lat').value);
-                lng = parseFloat(document.getElementById('custom-lng').value);
+                name = document.getElementById('custom-address-name').value.trim();
+                queryAddress = document.getElementById('custom-full-address').value.trim();
 
-                if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-                    return alert("장소명과 GPS 위도/경도를 올바르게 입력해주세요.");
+                if (!name || !queryAddress) {
+                    return alert("장소 이름과 상세 주소를 모두 입력해주세요!");
                 }
+            }
+
+            btnAdd.innerText = "🔍 위치 찾아 지도로 연결 중...";
+            btnAdd.disabled = true;
+
+            const coords = await fetchCoordinates(queryAddress);
+
+            btnAdd.innerText = "➕ 장소 추가하기";
+            btnAdd.disabled = false;
+
+            if (!coords) {
+                // 일본 상세 주소일 경우 구글 지오코딩 2차 시도
+                const retryCoords = await fetchCoordinates(queryAddress.replace(/일본|Japan/g, '').trim());
+                if (!retryCoords) {
+                    return alert("주소의 위치를 찾지 못했습니다. 주소를 조금 더 단순하게 입력해 보세요.\n예: 2 Chome-26-4 Nagono, Nishi Ward, Nagoya");
+                }
+                coords = retryCoords;
             }
 
             const newPlace = {
                 id: Date.now(),
                 name: name,
-                lat: lat,
-                lng: lng,
+                lat: coords.lat,
+                lng: coords.lng,
                 day: currentDay,
                 cost: 0,
                 category: "기타",
@@ -745,12 +752,12 @@
             saveTripData();
 
             document.getElementById('place-search-kw').value = '';
-            document.getElementById('custom-name').value = '';
-            document.getElementById('custom-lat').value = '';
-            document.getElementById('custom-lng').value = '';
+            document.getElementById('custom-address-name').value = '';
+            document.getElementById('custom-full-address').value = '';
 
             renderSchedule();
             updateTotalSpending();
+            alert(`'${name}' 위치가 구글 지도를 통해 정확히 추가되었습니다! ✨`);
         }
 
         function movePlace(index, direction) {
@@ -911,6 +918,7 @@
     </script>
 </body>
 </html>
+
 
 
 
