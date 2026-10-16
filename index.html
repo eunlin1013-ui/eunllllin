@@ -652,10 +652,10 @@
         function initMap() {
             map = L.map('map-container').setView([35.1848, 136.8997], 13);
             
-            // CartoDB Voyager 타일로 변경 (한글/영어 명칭 지원)
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            // Google Maps 무료 한국어 레이어 적용
+            L.tileLayer('https://mt1.google.com/vt/lyrs=m&hl=ko&x={x}&y={y}&z={z}', {
                 maxZoom: 19,
-                attribution: '© OpenStreetMap © CARTO'
+                attribution: '© Google Maps'
             }).addTo(map);
 
             polyline = L.polyline([], { color: '#e985a5', weight: 4, opacity: 0.85 }).addTo(map);
@@ -911,6 +911,7 @@
     </script>
 </body>
 </html>
+
 
 
 
