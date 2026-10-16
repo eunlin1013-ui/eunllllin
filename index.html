@@ -651,9 +651,11 @@
 
         function initMap() {
             map = L.map('map-container').setView([35.1848, 136.8997], 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            
+            // CartoDB Voyager 타일로 변경 (한글/영어 명칭 지원)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
                 maxZoom: 19,
-                attribution: '© OpenStreetMap'
+                attribution: '© OpenStreetMap © CARTO'
             }).addTo(map);
 
             polyline = L.polyline([], { color: '#e985a5', weight: 4, opacity: 0.85 }).addTo(map);
@@ -829,7 +831,6 @@
                 pathCoordinates.push(pos);
 
                 if (map) {
-                    // 지도 위에 1, 2, 3... 숫자가 크게 박힌 커스텀 마커 생성
                     const numberIcon = L.divIcon({
                         className: 'custom-number-marker',
                         html: `${index + 1}`,
@@ -910,6 +911,7 @@
     </script>
 </body>
 </html>
+
 
 
 
